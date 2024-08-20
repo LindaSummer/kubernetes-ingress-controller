@@ -3,17 +3,14 @@
 package isolated
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"net"
+	"net/http"
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/kong/kubernetes-ingress-controller/v3/internal/annotations"
-	kongv1beta1 "github.com/kong/kubernetes-ingress-controller/v3/pkg/apis/configuration/v1beta1"
-	"github.com/kong/kubernetes-ingress-controller/v3/pkg/clientset"
-	"github.com/kong/kubernetes-ingress-controller/v3/test"
-	"github.com/kong/kubernetes-ingress-controller/v3/test/integration/consts"
-	"github.com/kong/kubernetes-ingress-controller/v3/test/internal/testlabels"
 	"github.com/kong/kubernetes-testing-framework/pkg/clusters"
 	ktfkong "github.com/kong/kubernetes-testing-framework/pkg/clusters/addons/kong"
 	"github.com/kong/kubernetes-testing-framework/pkg/utils/kubernetes/generators"
@@ -23,6 +20,14 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/features"
+
+	"github.com/kong/kubernetes-ingress-controller/v3/internal/annotations"
+	kongv1beta1 "github.com/kong/kubernetes-ingress-controller/v3/pkg/apis/configuration/v1beta1"
+	"github.com/kong/kubernetes-ingress-controller/v3/pkg/clientset"
+	"github.com/kong/kubernetes-ingress-controller/v3/test"
+	"github.com/kong/kubernetes-ingress-controller/v3/test/integration/consts"
+	"github.com/kong/kubernetes-ingress-controller/v3/test/internal/helpers"
+	"github.com/kong/kubernetes-ingress-controller/v3/test/internal/testlabels"
 )
 
 func TestTCPIngressEssentials(t *testing.T) {
@@ -72,7 +77,7 @@ func TestTCPIngressEssentials(t *testing.T) {
 					Name:       "tcp",
 					Protocol:   corev1.ProtocolTCP,
 					Port:       servicePort,
-					TargetPort: intstr.FromInt(test.EchoTCPPort),
+					TargetPort: intstr.FromInt(test.HTTPBinPort),
 				}}
 				service, err = cluster.Client().CoreV1().Services(namespace).Create(ctx, service, metav1.CreateOptions{})
 				assert.NoError(t, err)
@@ -117,11 +122,26 @@ func TestTCPIngressEssentials(t *testing.T) {
 					assert.NoError(c, err)
 					assert.Equal(c, ipOfKong, ipReportedByIngress, "TCPIngress is not ready to redirect traffic")
 				}
-
 			}, consts.StatusWait, consts.WaitTick)
 
-			t.Log("verifying that the TCPIngress is responding ready")
-			assertEventuallyResponseTCP(t, tcpGatewayURL, testUUID)
+			tcpProxyURL := fmt.Sprintf("http://%s", tcpGatewayURL)
+			t.Logf("verifying that the TCPIngress %s is responding ready", tcpProxyURL)
+			assert.EventuallyWithT(t, func(c *assert.CollectT) {
+				resp, err := helpers.DefaultHTTPClient().Get(tcpProxyURL)
+				if assert.NoError(c, err) && assert.NotNil(c, resp) {
+					// the assert.EventuallyWithT will collect all errors,
+					// so the Close() can only be called if the response is not nil
+					defer resp.Body.Close()
+					assert.Equal(c, http.StatusOK, resp.StatusCode)
+					// now that the ingress backend is routable, make sure the contents we're getting back are what we expect
+					// Expected: "<title>httpbin.org</title>"
+					b := new(bytes.Buffer)
+					n, err := b.ReadFrom(resp.Body)
+					assert.NoError(c, err)
+					assert.Greater(c, n, int64(0))
+					assert.Contains(c, b.String(), "<title>httpbin.org</title>")
+				}
+			}, consts.StatusWait, consts.WaitTick)
 
 			return ctx
 		}).
