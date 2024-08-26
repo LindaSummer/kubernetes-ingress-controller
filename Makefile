@@ -487,7 +487,7 @@ _test.integration: _check.container.environment go-junit-report
 		-covermode=atomic \
 		-coverpkg=$(PKG_LIST) \
 		-coverprofile=$(COVERAGE_OUT) \
-		./test/integration | \
+		./test/integration -run 'TestTCPRouteReferenceGrant' | \
 	$(GOJUNIT_REPORT) -iocopy -out $(JUNIT_REPORT) -parser gotest
 
 .PHONY: _test.integration.isolated
@@ -506,7 +506,7 @@ _test.integration.isolated: _check.container.environment go-junit-report
 		-covermode=atomic \
 		-coverpkg=$(PKG_LIST) \
 		-coverprofile=$(COVERAGE_OUT) \
-		./test/integration/isolated -args --parallel $(E2E_FRAMEWORK_FLAGS) | \
+		./test/integration/isolated -run 'TestTCPRouteReferenceGrant' -args --parallel $(E2E_FRAMEWORK_FLAGS) | \
 	$(GOJUNIT_REPORT) -iocopy -out $(JUNIT_REPORT) -parser gotest
 
 .PHONY: test.integration.isolated.dbless

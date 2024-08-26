@@ -61,6 +61,16 @@ func setInCtx[KeyT comparable, R any](ctx context.Context, key KeyT, r R) contex
 	return context.WithValue(ctx, key, r)
 }
 
+func getInCtx[R any](ctx context.Context, t *testing.T, key string) R {
+	raw := ctx.Value(key)
+	result, ok := raw.(R)
+	if !ok {
+		var r R
+		t.Fatalf("required %T to be stored in context but found: %s (of type %T)", r, raw, raw)
+	}
+	return result
+}
+
 type _cluster struct{}
 
 // SetClusterInCtx sets the cluster in the context.
